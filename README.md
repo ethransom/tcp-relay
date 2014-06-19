@@ -11,6 +11,18 @@ use a muxado session to connect to the relay.
 Usage
 -----
 
+Make sure you have Go set up properly. [Official Go setup page.](http://golang.org/doc/install)
+
+To build:
+
+```sh
+$ go get github.com/inconshreveable/muxado
+$ go build relay.go
+$ go build echoserver.go
+```
+
+To run:
+
 ```sh
 $ ./relay 8080 & # the relay will listen for services on 8080
 $ ./echoserver localhost 8080 & # connect to the relay at localhost:8080
@@ -60,6 +72,4 @@ n00bish design decisions
  * The closing of connections isn't handled very gracefully. It was either that or spaghetti code.
    This means the relay probably isn't very robust, because resources aren't being freed properly.
  * Many programs can't use muxado. It would be nice to have a proxy adaptor/server.
-
-
 

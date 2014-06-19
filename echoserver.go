@@ -3,11 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 
 	"github.com/inconshreveable/muxado"
-	// "net"
-	// "os"
-	"io/ioutil"
 )
 
 func main() {
@@ -41,10 +39,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Assigned an address:", string(buf))
+	fmt.Println("Listening on", string(buf))
 	stream.Close()
-
-	fmt.Println("Handshake complete\nBeginning normal operation...")
 
 	// use this goroutine to wait for and process clients
 	for {
