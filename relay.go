@@ -4,12 +4,15 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"strconv"
 
 	"github.com/inconshreveable/muxado"
 )
+
+var info, warn *log.Logger
 
 func main() {
 	var max_services int
@@ -22,17 +25,20 @@ func main() {
 		os.Exit(2)
 	}
 
+	info = log.New(os.Stdout, "", log.LstdFlags|log.Lmicroseconds)
+	warn = log.New(os.Stdout, "WARN: ", log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
+
 	// open up the back-facing port for services to connect
 	socket, err := muxado.Listen("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
-		fmt.Println("Error creating socket: ", err.Error())
+		fmt.Println("couldn't create muxado socket: ", err.Error())
 		return
 	}
 	defer socket.Close()
-	fmt.Println("Listening on port", port)
+	info.Println("listening on port", port)
 
 	// create our socket pool
-	fmt.Println("Serving for", max_services, "services")
+	info.Println("serving for", max_services, "services")
 	socket_pool := make(chan int, max_services)
 	for i := 1; i <= max_services; i++ {
 		socket_pool <- i + port
@@ -42,12 +48,14 @@ func main() {
 	for {
 		req, err := socket.Accept()
 		if err != nil {
-			fmt.Println("Error accepting server: ", err.Error())
-			continue
+			warn.Println("error accepting service:", err.Error())
+			break
 		}
 
 		go handleSession(req, socket_pool)
 	}
+
+	log.Panic("aborting...")
 }
 
 func handleSession(back_conn muxado.Session, socket_pool chan int) {
@@ -57,7 +65,7 @@ func handleSession(back_conn muxado.Session, socket_pool chan int) {
 	// the first (and only) stream opened by the client is the handshaking stream
 	stream, err := back_conn.Accept()
 	if err != nil {
-		fmt.Println(err)
+		warn.Println("can't accept handshake stream:", err)
 		return
 	}
 
@@ -69,13 +77,13 @@ func handleSession(back_conn muxado.Session, socket_pool chan int) {
 	// setup a new forward-facing port for clients to connect to the connecting server
 	front_conn, err := net.Listen("tcp", address)
 	if err != nil {
-		fmt.Println("Error setting up forward-facing port:", err.Error())
+		warn.Println("can't open socket:", err.Error())
 		// don't put the socket back in the pool, maybe it's taken
 		return
 	}
 	defer (func() {
 		front_conn.Close()
-		fmt.Println("No longer forwarding on", port)
+		info.Println("closing port:", port)
 		socket_pool <- port
 	})()
 
@@ -84,23 +92,24 @@ func handleSession(back_conn muxado.Session, socket_pool chan int) {
 	stream.Write(byteArray)
 	stream.Close()
 
-	fmt.Println("Now forwarding", address)
+	info.Println("forwarding a service on:", address)
 
 	// accept clients for the server
 	for {
 		client, err := front_conn.Accept()
 		if err != nil {
-			fmt.Println("Error accepting from ", address, ": ", err.Error())
+			warn.Println("can't accept from:", address, ": ", err.Error())
 			continue
 		}
+		defer client.Close()
 
-		fmt.Println("Accepted client for ", address)
+		info.Println("accepted client for:", address)
 
 		// "finish" the connection with a muxado stream
 		server, err := back_conn.Open()
 		if err != nil {
-			fmt.Println("Error opening multiplexed stream:", err)
-			continue
+			warn.Println("can't open multiplexed stream:", err)
+			break
 		}
 
 		// whichever goroutine reads from a stream is expected to close it
@@ -110,14 +119,14 @@ func handleSession(back_conn muxado.Session, socket_pool chan int) {
 		go (func(server muxado.Stream, client net.Conn) {
 			defer server.Close()
 			io.Copy(server, client)
-			fmt.Println("no longer server->client")
 		})(server, client)
 
 		// forward client data to server
 		go (func(server muxado.Stream, client net.Conn) {
 			defer client.Close()
 			io.Copy(client, server)
-			fmt.Println("no longer client->server")
 		})(server, client)
 	}
+
+	warn.Println("aborting service:", address)
 }
