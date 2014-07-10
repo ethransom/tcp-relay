@@ -47,7 +47,7 @@ func main() {
 		stream, err := sess.Accept()
 		if err != nil {
 			fmt.Println("Couldn't accept client:", err)
-			continue
+			break
 		}
 		fmt.Println("Accepted client")
 
